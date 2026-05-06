@@ -1,94 +1,55 @@
 //@version=5
-strategy("Quant Trading Strategy (MACD + EMA + ATR)", 
-     overlay=true, 
+strategy("Low Drawdown Strategy (MACD + EMA200 + ATR Filter)", 
+     overlay=true,
      initial_capital=10000,
      default_qty_type=strategy.percent_of_equity,
-     default_qty_value=10)
+     default_qty_value=5)
 
-// ======================
 // INPUTS
-// ======================
-fastLen   = input.int(12, "MACD Fast Length")
-slowLen   = input.int(26, "MACD Slow Length")
-signalLen = input.int(9, "MACD Signal Length")
+fastLen   = input.int(12, "MACD Fast")
+slowLen   = input.int(26, "MACD Slow")
+signalLen = input.int(9, "MACD Signal")
 
-emaLen    = input.int(50, "Trend EMA Length")
+emaFastLen = input.int(50, "EMA 50")
+emaSlowLen = input.int(200, "EMA 200")
 
-atrLen    = input.int(14, "ATR Length")
-riskMult  = input.float(1.5, "Stop Loss (ATR Multiplier)")
-rewardMult= input.float(2.0, "Take Profit (RR Multiplier)")
+atrLen  = input.int(14, "ATR Length")
+riskATR = input.float(1.0, "Stop ATR (mais curto)")
+rr      = input.float(1.8, "Risk/Reward")
 
-// ======================
 // INDICATORS
-// ======================
 [macd, signal, hist] = ta.macd(close, fastLen, slowLen, signalLen)
-emaTrend = ta.ema(close, emaLen)
+ema50  = ta.ema(close, emaFastLen)
+ema200 = ta.ema(close, emaSlowLen)
 atr = ta.atr(atrLen)
 
-// ======================
-// TREND FILTER
-// ======================
-bullTrend = close > emaTrend
-bearTrend = close < emaTrend
+// TREND FILTER (FORTE)
+bullTrend = close > ema200 and ema50 > ema200
+bearTrend = close < ema200 and ema50 < ema200
 
-// ======================
-// SIGNALS
-// ======================
-longSignal  = ta.crossover(macd, signal) and bullTrend
-shortSignal = ta.crossunder(macd, signal) and bearTrend
+// VOLATILITY FILTER (evita chop)
+volatility = atr > ta.sma(atr, 20)
 
-// ======================
-// RISK MANAGEMENT
-// ======================
-longSL  = close - atr * riskMult
-longTP  = close + atr * riskMult * rewardMult
+// ENTRY
+longSignal  = ta.crossover(macd, signal) and bullTrend and volatility
+shortSignal = ta.crossunder(macd, signal) and bearTrend and volatility
 
-shortSL = close + atr * riskMult
-shortTP = close - atr * riskMult * rewardMult
+// RISK MANAGEMENT (mais conservador)
+longSL  = close - atr * riskATR
+longTP  = close + atr * riskATR * rr
 
-// ======================
+shortSL = close + atr * riskATR
+shortTP = close - atr * riskATR * rr
+
 // EXECUTION
-// ======================
 if (longSignal)
     strategy.entry("Long", strategy.long)
-    strategy.exit("Exit Long", 
-        from_entry="Long", 
-        stop=longSL, 
-        limit=longTP)
+    strategy.exit("Exit Long", from_entry="Long", stop=longSL, limit=longTP)
 
 if (shortSignal)
     strategy.entry("Short", strategy.short)
-    strategy.exit("Exit Short", 
-        from_entry="Short", 
-        stop=shortSL, 
-        limit=shortTP)
+    strategy.exit("Exit Short", from_entry="Short", stop=shortSL, limit=shortTP)
 
-// ======================
-// PLOTS
-// ======================
-plot(emaTrend, color=color.orange, linewidth=2, title="EMA Trend")
-
-plot(hist, 
-     style=plot.style_columns, 
-     color=hist >= 0 ? color.green : color.red, 
-     title="MACD Histogram")
-
-plot(macd, color=color.blue, title="MACD")
-plot(signal, color=color.orange, title="Signal")
-
-// ======================
-// VISUAL SIGNALS
-// ======================
-plotshape(longSignal, 
-     title="Buy Signal", 
-     location=location.belowbar, 
-     color=color.green, 
-     style=shape.triangleup, 
-     size=size.small)
-
-plotshape(shortSignal, 
-     title="Sell Signal", 
-     location=location.abovebar, 
-     color=color.red, 
-     style=shape.triangledown, 
-     size=size.small)
+// PLOT
+plot(ema50, color=color.orange, title="EMA 50")
+plot(ema200, color=color.blue, title="EMA 200")
